@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finanzas - Centro de Control Económico - Quiniela Mundial 2026</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #0f172a; }
+        .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .gradient-text { background: linear-gradient(135deg, #fbbf24, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .stat-card { transition: all 0.3s ease; }
+        .stat-card:hover { transform: translateY(-4px); }
+        .income-card { background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(34, 197, 94, 0.05)); border: 1px solid rgba(34, 197, 94, 0.3); }
+        .prize-card { background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.05)); border: 1px solid rgba(251, 191, 36, 0.3); }
+        .accumulated-card { background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.05)); border: 1px solid rgba(99, 102, 241, 0.3); }
+        .pending-card { background: linear-gradient(135deg, rgba(234, 179, 8, 0.15), rgba(234, 179, 8, 0.05)); border: 1px solid rgba(234, 179, 8, 0.3); }
+        .player-row { transition: all 0.2s; }
+        .player-row:hover { background: rgba(255,255,255,0.05); }
+        .winner-row { background: rgba(251, 191, 36, 0.08) !important; }
+        .loading-spinner { width: 40px; height: 40px; border: 3px solid #334155; border-top-color: #fbbf24; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .verified-badge { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .pending-badge { background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.3); }
+        .no-payment-badge { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .free-badge { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .btn-verify { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); transition: all 0.2s; }
+        .btn-verify:hover { background: rgba(34, 197, 94, 0.4); }
+        .btn-unverify { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); transition: all 0.2s; }
+        .btn-unverify:hover { background: rgba(239, 68, 68, 0.4); }
+        .date-section { border-left: 3px solid #fbbf24; }
+        .player-payment-row { transition: all 0.2s; }
+        .player-payment-row:hover { background: rgba(255,255,255,0.03); }
+        .modal-overlay { background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); }
+        .fade-in { animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .tab-active { border-bottom: 3px solid #fbbf24; color: #fbbf24; }
+        .tab-btn { cursor: pointer; padding: 12px 20px; font-weight: 600; color: #94a3b8; border-bottom: 3px solid transparent; transition: all 0.2s; }
+        .tab-btn:hover { color: #e2e8f0; }
+        .sort-asc::after { content: " ▲"; font-size: 10px; }
+        .sort-desc::after { content: " ▼"; font-size: 10px; }
+        .live-indicator { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .detail-row { display: none; }
+        .detail-row.visible { display: table-row; }
+        .expand-btn { cursor: pointer; transition: transform 0.2s; }
+        .expand-btn.rotated { transform: rotate(90deg); }
+        .money-positive { color: #4ade80; }
+        .money-negative { color: #f87171; }
+    </style>
+<base target="_blank">
+<base target="_blank">
+</head>
+<body class="text-white min-h-screen">
+
+<script>
+// ============================================
+// CONFIGURACIÓN SUPABASE
+// ============================================
+const SUPABASE_URL = 'https://dwcnwxrcwuicwxbtqpxs.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_M93hXy25JXgP76Plysgr9w_nvwBZ-cT';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let players = [];
+let matches = [];
+let bets = [];
+let payments = [];
+let paymentFees = [];
+let realtimeChannel = null;
+let selectedDateForPoints = null;
+
+// ============================================
+// FUNCIONES DE FECHA ROBUSTAS
+// ============================================
+
+// Extrae YYYY-MM-DD de cualquier string de fecha (ISO, date-only, etc.)
+function extractDateKey(dateStr) {
+    if (!dateStr) return '';
+    // Si ya es YYYY-MM-DD (10 chars)
+    if (typeof dateStr === 'string' && dateStr.length === 10 && dateStr.includes('-')) {
+        return dateStr;
+    }
+    // Si viene con hora, extraer solo la parte de fecha
+    if (typeof dateStr === 'string' && dateStr.includes('T')) {
+        return dateStr.split('T')[0];
+    }
+    // Intentar crear fecha y formatear
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    } catch (e) {
+        return '';
+    }
+}
+
+// Convierte a fecha en zona horaria de Bolivia
+function toBoliviaDate(dateStr) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    // Convertir a string en zona Bolivia y parsear
+    const boliviaStr = d.toLocaleString('en-US', { timeZone: 'America/La_Paz' });
+    return new Date(boliviaStr);
+}
+
+function getBoliviaDateKey(dateStr) {
+    const dateKey = extractDateKey(dateStr);
+    if (dateKey) return dateKey;
+
+    const bd = toBoliviaDate(dateStr);
+    if (!bd) return '';
+    const year = bd.getFullYear();
+    const month = String(bd.getMonth() + 1).padStart(2, '0');
+    const day = String(bd.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function getFeeForDate(dateStr) {
+    const dateKey = extractDateKey(dateStr);
+    if (!dateKey) return { amount: 5.00, isFree: false, notes: 'Valor por defecto' };
+
+    const fee = paymentFees.find(f => {
+        const feeDate = extractDateKey(f.match_date);
+        return feeDate === dateKey;
+    });
+
+    if (fee && fee.is_free) return { amount: 0, isFree: true, notes: fee.notes || 'Fecha libre' };
+    if (fee) return { amount: parseFloat(fee.amount) || 5.00, isFree: false, notes: fee.notes || 'Inscripción pagada' };
+    return { amount: 5.00, isFree: false, notes: 'Valor por defecto' };
+}
+
+function hasVerifiedPayment(playerId, matchDateStr) {
+    const dateKey = extractDateKey(matchDateStr);
+    if (!dateKey) return false;
+
+    const fee = getFeeForDate(matchDateStr);
+    if (fee.isFree) return true;
+
+    const payment = payments.find(p => {
+        const payDate = extractDateKey(p.match_date);
+        return p.player_id === playerId && 
+               payDate === dateKey &&
+               p.status === 'paid' &&
+               p.verified_at !== null &&
+               p.verified_at !== undefined;
+    });
+    return !!payment;
+}
+
+const calculatePoints = (betHome, betAway, realHome, realAway) => {
+    if (betHome === realHome && betAway === realAway) return { points: 5, reason: "Resultado exacto" };
+    const betDiff = betHome - betAway;
+    const realDiff = realHome - realAway;
+    if (betDiff === realDiff && betDiff !== 0) return { points: 3, reason: "Diferencia de goles" };
+    if (betDiff === 0 && realDiff === 0) return { points: 2, reason: "Empate correcto" };
+    const betWinner = betHome > betAway ? 'home' : betHome < betAway ? 'away' : 'draw';
+    const realWinner = realHome > realAway ? 'home' : realHome < realAway ? 'away' : 'draw';
+    if (betWinner === realWinner && betWinner !== 'draw') return { points: 2, reason: "Ganador correcto" };
+    return { points: 0, reason: "Sin acierto" };
+};
+
+function formatDateNice(dateStr) {
+    const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const dateKey = extractDateKey(dateStr);
+    if (!dateKey) return 'Fecha inválida';
+
+    const [year, month, day] = dateKey.split('-').map(Number);
+    if (!year || !month || !day) return 'Fecha inválida';
+
+    return `${day} de ${months[month - 1]} ${year}`;
+}
+
+function formatDateShort(dateStr) {
+    const dateKey = extractDateKey(dateStr);
+    if (!dateKey) return '--/--';
+    const [year, month, day] = dateKey.split('-').map(Number);
+    return `${String(day).padStart(2,'0')}/${String(month).padStart(2,'0')}`;
+}
+
+function formatCurrency(amount) {
+    if (amount === undefined || amount === null || isNaN(amount)) return '0.00';
+    return Number(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function getInitials(name) {
+    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+}
+
+// ============================================
+// CARGA DE DATOS
+// ============================================
+async function loadData() {
+    try {
+        const [{ data: playersData }, { data: matchesData }, { data: betsData }, { data: paymentsData }, { data: feesData }] = await Promise.all([
+            sb.from('players').select('*').order('name'),
+            sb.from('matches').select('*').eq('status', 'finished').order('match_date'),
+            sb.from('bets').select('*'),
+            sb.from('payments').select('*'),
+            sb.from('payment_fees').select('*')
+        ]);
+
+        players = playersData || [];
+        matches = matchesData || [];
+        bets = betsData || [];
+        payments = paymentsData || [];
+        paymentFees = feesData || [];
+
+        // Seleccionar la fecha más reciente por defecto
+        const groupedMatches = {};
+        matches.forEach(m => {
+            const dateKey = extractDateKey(m.match_date);
+            if (dateKey) {
+                if (!groupedMatches[dateKey]) groupedMatches[dateKey] = [];
+                groupedMatches[dateKey].push(m);
+            }
+        });
+        const sortedDates = Object.keys(groupedMatches).sort();
+        if (sortedDates.length > 0 && !selectedDateForPoints) {
+            selectedDateForPoints = sortedDates[sortedDates.length - 1];
+        }
+
+        renderAll();
+        setupRealtime();
+    } catch (error) {
+        console.error('Error cargando datos:', error);
+        document.getElementById('mainContainer').innerHTML = `
+            <div class="glass rounded-2xl p-8 text-center text-red-400">
+                <p class="text-lg font-bold mb-2">Error al cargar datos</p>
+                <p class="text-sm text-gray-400">${error.message}</p>
+                <button onclick="loadData()" class="mt-4 bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm">Reintentar</button>
+            </div>
+        `;
+    }
+}
+
+// ============================================
+// REALTIME
+// ============================================
+function setupRealtime() {
+    if (realtimeChannel) {
+        sb.removeChannel(realtimeChannel);
+    }
+
+    realtimeChannel = sb.channel('finanzas-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => handleRealtimeUpdate())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_fees' }, () => handleRealtimeUpdate())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, () => handleRealtimeUpdate())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, () => handleRealtimeUpdate())
+        .subscribe((status) => {
+            const indicator = document.getElementById('liveIndicator');
+            if (indicator) {
+                indicator.style.background = status === 'SUBSCRIBED' ? '#22c55e' : '#ef4444';
+                indicator.title = status === 'SUBSCRIBED' ? 'Conectado en tiempo real' : 'Desconectado';
+            }
+        });
+}
+
+async function handleRealtimeUpdate() {
+    try {
+        const [{ data: paymentsData }, { data: feesData }, { data: matchesData }, { data: betsData }] = await Promise.all([
+            sb.from('payments').select('*'),
+            sb.from('payment_fees').select('*'),
+            sb.from('matches').select('*').eq('status', 'finished').order('match_date'),
+            sb.from('bets').select('*')
+        ]);
+        payments = paymentsData || [];
+        paymentFees = feesData || [];
+        matches = matchesData || [];
+        bets = betsData || [];
+        renderAll();
+        showToast('Datos actualizados automáticamente', 'success');
+    } catch (e) {
+        console.error('Error en actualización realtime:', e);
+    }
+}
+
+// ============================================
+// VERIFICAR / DESVERIFICAR PAGO
+// ============================================
+async function togglePayment(playerId, dateKey, currentStatus) {
+    try {
+        if (currentStatus === 'paid') {
+            const { error } = await sb.from('payments')
+                .update({ verified_at: null, status: 'pending' })
+                .eq('player_id', playerId)
+                .eq('match_date', dateKey);
+            if (error) throw error;
+            showToast('Verificación removida', 'info');
+        } else {
+            const existing = payments.find(p => {
+                const payDate = extractDateKey(p.match_date);
+                return p.player_id === playerId && payDate === dateKey;
+            });
+            if (existing) {
+                const { error } = await sb.from('payments')
+                    .update({ verified_at: new Date().toISOString(), status: 'paid' })
+                    .eq('id', existing.id);
+                if (error) throw error;
+            } else {
+                const fee = getFeeForDate(dateKey);
+                const { error } = await sb.from('payments').insert({
+                    player_id: playerId,
+                    match_date: dateKey,
+                    amount: fee.amount,
+                    status: 'paid',
+                    verified_at: new Date().toISOString(),
+                    created_at: new Date().toISOString()
+                });
+                if (error) throw error;
+            }
+            showToast('Pago verificado correctamente', 'success');
+        }
+        await handleRealtimeUpdate();
+    } catch (error) {
+        console.error('Error toggle payment:', error);
+        showToast('Error: ' + error.message, 'error');
+    }
+}
+
+// ============================================
+// CÁLCULOS FINANCIEROS PRINCIPALES
+// ============================================
+function calculateFinancials() {
+    const groupedMatches = {};
+    matches.forEach(m => {
+        const dateKey = extractDateKey(m.match_date);
+        if (dateKey) {
+            if (!groupedMatches[dateKey]) groupedMatches[dateKey] = [];
+            groupedMatches[dateKey].push(m);
+        }
+    });
+
+    let totalIncome = 0;
+    let totalDistributed = 0;
+    let totalAccumulated = 0;
+    const dateResults = [];
+
+    Object.keys(groupedMatches).sort().forEach(date => {
+        const dateMatches = groupedMatches[date];
+        const fee = getFeeForDate(date);
+
+        const verifiedPlayers = players.filter(p => {
+            return hasVerifiedPayment(p.id, date);
+        });
+
+        const verifiedCount = verifiedPlayers.length;
+        const dateIncome = fee.isFree ? 0 : verifiedCount * fee.amount;
+        const datePrize = fee.isFree ? 0 : dateIncome * 0.8;
+        const dateAccumulated = fee.isFree ? 0 : dateIncome * 0.2;
+
+        // Calcular ganador(es) de la fecha
+        const datePlayerScores = players.map(player => {
+            let totalPoints = 0;
+            let exactos = 0;
+            dateMatches.forEach(match => {
+                const bet = bets.find(b => b.player_id === player.id && b.match_id === match.id);
+                if (bet && hasVerifiedPayment(player.id, match.match_date)) {
+                    const result = calculatePoints(bet.home_prediction, bet.away_prediction, match.home_score, match.away_score);
+                    totalPoints += result.points;
+                    if (result.points === 5) exactos++;
+                }
+            });
+            return { id: player.id, name: player.name, totalPoints, exactos };
+        }).sort((a, b) => b.totalPoints - a.totalPoints);
+
+        const maxPoints = Math.max(...datePlayerScores.map(p => p.totalPoints), 0);
+        const winners = datePlayerScores.filter(p => p.totalPoints === maxPoints && p.totalPoints > 0);
+        const prizePerWinner = winners.length > 0 ? datePrize / winners.length : 0;
+
+        dateResults.push({
+            date,
+            fee,
+            verifiedCount,
+            totalPlayers: players.length,
+            income: dateIncome,
+            prizePool: datePrize,
+            accumulated: dateAccumulated,
+            winners,
+            prizePerWinner,
+            dateMatches
+        });
+
+        totalIncome += dateIncome;
+        totalDistributed += datePrize;
+        totalAccumulated += dateAccumulated;
+    });
+
+    return { totalIncome, totalDistributed, totalAccumulated, dateResults };
+}
+
+function calculatePlayerStats() {
+    const groupedMatches = {};
+    matches.forEach(m => {
+        const dateKey = extractDateKey(m.match_date);
+        if (dateKey) {
+            if (!groupedMatches[dateKey]) groupedMatches[dateKey] = [];
+            groupedMatches[dateKey].push(m);
+        }
+    });
+
+    const sortedDates = Object.keys(groupedMatches).sort();
+
+    return players.map(player => {
+        let totalValidPoints = 0;
+        let totalPrizeMoney = 0;
+        let verifiedPaymentsCount = 0;
+        let totalPaymentsCount = 0;
+        let exactos = 0;
+        let matchesPlayed = 0;
+        let pointsByDate = {};
+        let prizesByDate = {};
+        let paidByDate = {};
+
+        // Contar pagos verificados
+        payments.forEach(pay => {
+            if (pay.player_id === player.id && pay.status === 'paid') {
+                totalPaymentsCount++;
+                if (pay.verified_at) verifiedPaymentsCount++;
+            }
+        });
+
+        // Calcular puntos y premios por fecha
+        sortedDates.forEach(date => {
+            const dateMatches = groupedMatches[date];
+            const fee = getFeeForDate(date);
+            const hasPayment = hasVerifiedPayment(player.id, date);
+
+            // Cuánto pagó este jugador en esta fecha
+            const playerPayment = payments.find(p => {
+                const payDate = extractDateKey(p.match_date);
+                return p.player_id === player.id && payDate === date && p.status === 'paid' && p.verified_at;
+            });
+            const amountPaid = fee.isFree ? 0 : (playerPayment ? (parseFloat(playerPayment.amount) || fee.amount) : 0);
+            paidByDate[date] = amountPaid;
+
+            if (!hasPayment && !fee.isFree) {
+                pointsByDate[date] = 0;
+                prizesByDate[date] = 0;
+                return;
+            }
+
+            let datePoints = 0;
+            dateMatches.forEach(match => {
+                const bet = bets.find(b => b.player_id === player.id && b.match_id === match.id);
+                if (bet) {
+                    matchesPlayed++;
+                    const result = calculatePoints(bet.home_prediction, bet.away_prediction, match.home_score, match.away_score);
+                    datePoints += result.points;
+                    if (result.points === 5) exactos++;
+                }
+            });
+
+            pointsByDate[date] = datePoints;
+            totalValidPoints += datePoints;
+
+            // Verificar si ganó esta fecha
+            const allPlayerScores = players.map(p => {
+                let pts = 0;
+                dateMatches.forEach(m => {
+                    const b = bets.find(bet => bet.player_id === p.id && bet.match_id === m.id);
+                    if (b && hasVerifiedPayment(p.id, m.match_date)) {
+                        const r = calculatePoints(b.home_prediction, b.away_prediction, m.home_score, m.away_score);
+                        pts += r.points;
+                    }
+                });
+                return { id: p.id, points: pts };
+            }).sort((a, b) => b.points - a.points);
+
+            const maxDatePoints = Math.max(...allPlayerScores.map(p => p.points), 0);
+            if (datePoints === maxDatePoints && datePoints > 0) {
+                const verifiedCount = players.filter(p => hasVerifiedPayment(p.id, date)).length;
+                const dateIncome = fee.isFree ? 0 : verifiedCount * fee.amount;
+                const datePrize = fee.isFree ? 0 : dateIncome * 0.8;
+                const winnersCount = allPlayerScores.filter(p => p.points === maxDatePoints).length;
+                const prizeWon = datePrize / winnersCount;
+                prizesByDate[date] = prizeWon;
+                totalPrizeMoney += prizeWon;
+            } else {
+                prizesByDate[date] = 0;
+            }
+        });
+
+        const selectedDatePoints = selectedDateForPoints ? (pointsByDate[selectedDateForPoints] || 0) : 0;
+
+        // Dinero pagado total
+        let moneyPaid = 0;
+        payments.forEach(pay => {
+            if (pay.player_id === player.id && pay.status === 'paid' && pay.verified_at) {
+                moneyPaid += parseFloat(pay.amount) || 0;
+            }
+        });
+
+        return {
+            ...player,
+            verifiedPaymentsCount,
+            totalPaymentsCount,
+            totalValidPoints,
+            selectedDatePoints,
+            exactos,
+            matchesPlayed,
+            totalPrizeMoney,
+            moneyPaid,
+            balance: totalPrizeMoney - moneyPaid,
+            pointsByDate,
+            prizesByDate,
+            paidByDate
+        };
+    }).sort((a, b) => b.totalValidPoints - a.totalValidPoints);
+}
+
+// ============================================
+// RENDERIZADO PRINCIPAL
+// ============================================
+function renderAll() {
+    const container = document.getElementById('mainContainer');
+    const { totalIncome, totalDistributed, totalAccumulated, dateResults } = calculateFinancials();
+    const playerStats = calculatePlayerStats();
+
+    let currentRank = 1;
+    let prevPoints = null;
+    playerStats.forEach((p, i) => {
+        if (prevPoints !== null && p.totalValidPoints < prevPoints) {
+            currentRank = i + 1;
+        }
+        p.rank = currentRank;
+        prevPoints = p.totalValidPoints;
+    });
+
+    container.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 fade-in">
+            <div class="income-card stat-card rounded-2xl p-6">
+                <div class="flex items-center gap-3 mb-3">
+                    <span class="text-3xl">💰</span>
+                    <span class="text-green-400 text-sm font-semibold uppercase tracking-wider">Total Recaudado</span>
+                </div>
+                <div class="text-3xl font-black text-white">${formatCurrency(totalIncome)} Bs</div>
+                <div class="text-green-400/70 text-xs mt-2">Suma de todos los pagos verificados por fecha</div>
+            </div>
+            <div class="prize-card stat-card rounded-2xl p-6">
+                <div class="flex items-center gap-3 mb-3">
+                    <span class="text-3xl">🏆</span>
+                    <span class="text-yellow-400 text-sm font-semibold uppercase tracking-wider">Total Distribuido</span>
+                </div>
+                <div class="text-3xl font-black text-white">${formatCurrency(totalDistributed)} Bs</div>
+                <div class="text-yellow-400/70 text-xs mt-2">80% repartido entre ganadores de cada fecha</div>
+            </div>
+            <div class="accumulated-card stat-card rounded-2xl p-6">
+                <div class="flex items-center gap-3 mb-3">
+                    <span class="text-3xl">🎯</span>
+                    <span class="text-indigo-400 text-sm font-semibold uppercase tracking-wider">Bolsa Acumulada</span>
+                </div>
+                <div class="text-3xl font-black text-white">${formatCurrency(totalAccumulated)} Bs</div>
+                <div class="text-indigo-400/70 text-xs mt-2">20% por fecha para premio final</div>
+            </div>
+            <div class="pending-card stat-card rounded-2xl p-6">
+                <div class="flex items-center gap-3 mb-3">
+                    <span class="text-3xl">👥</span>
+                    <span class="text-amber-400 text-sm font-semibold uppercase tracking-wider">Jugadores</span>
+                </div>
+                <div class="text-3xl font-black text-white">${players.length}</div>
+                <div class="text-amber-400/70 text-xs mt-2">Participantes registrados</div>
+            </div>
+        </div>
+
+        <div class="flex border-b border-white/10 mb-6">
+            <button class="tab-btn tab-active" onclick="switchTab('fechas')" id="tab-fechas">📅 Gestión por Fecha</button>
+            <button class="tab-btn" onclick="switchTab('campeonato')" id="tab-campeonato">🏆 Campeonato</button>
+            <button class="tab-btn" onclick="switchTab('distribucion')" id="tab-distribucion">📊 Distribución</button>
+        </div>
+
+        <div id="panel-fechas" class="fade-in">${renderDateManagement(dateResults)}</div>
+        <div id="panel-campeonato" class="hidden fade-in">${renderChampionship(playerStats, dateResults)}</div>
+        <div id="panel-distribucion" class="hidden fade-in">${renderDistribution(totalIncome, totalDistributed, totalAccumulated)}</div>
+    `;
+}
+
+function renderDateManagement(dateResults) {
+    if (dateResults.length === 0) {
+        return `<div class="glass rounded-2xl p-8 text-center text-gray-500"><p class="text-lg">Aún no hay fechas finalizadas</p></div>`;
+    }
+
+    return dateResults.slice().reverse().map(dr => {
+        const playersWithStatus = players.map(p => {
+            const payment = payments.find(pay => {
+                const payDate = extractDateKey(pay.match_date);
+                return pay.player_id === p.id && payDate === dr.date && pay.status === 'paid';
+            });
+            const isVerified = payment && payment.verified_at;
+            const isPending = payment && !payment.verified_at;
+            return { ...p, payment, isVerified, isPending };
+        }).sort((a, b) => a.name.localeCompare(b.name));
+
+        return `
+            <div class="glass rounded-2xl p-6 mb-6 date-section fade-in">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4">
+                    <div>
+                        <h3 class="text-lg font-bold text-white">${formatDateNice(dr.date)}</h3>
+                        <p class="text-xs text-gray-400">${dr.dateMatches.length} partido${dr.dateMatches.length > 1 ? 's' : ''} finalizado${dr.dateMatches.length > 1 ? 's' : ''}</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        ${dr.fee.isFree
+                            ? '<span class="free-badge px-3 py-1 rounded-full text-xs font-bold">🆓 FECHA LIBRE</span>'
+                            : `<span class="verified-badge px-3 py-1 rounded-full text-xs font-bold">✅ ${dr.verifiedCount}/${dr.totalPlayers} pagos verificados</span>`
+                        }
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    <div class="bg-white/5 rounded-xl p-3 text-center">
+                        <div class="text-gray-400 text-xs mb-1">Jugadores Habilitados</div>
+                        <div class="text-white font-bold text-lg">${dr.verifiedCount}</div>
+                    </div>
+                    <div class="bg-white/5 rounded-xl p-3 text-center">
+                        <div class="text-green-400 text-xs mb-1">Recaudado</div>
+                        <div class="text-white font-bold text-lg">${formatCurrency(dr.income)} Bs</div>
+                        ${!dr.fee.isFree ? `<div class="text-gray-500 text-[10px]">${dr.verifiedCount} × ${formatCurrency(dr.fee.amount)} Bs</div>` : ''}
+                    </div>
+                    <div class="bg-white/5 rounded-xl p-3 text-center">
+                        <div class="text-yellow-400 text-xs mb-1">Premios (80%)</div>
+                        <div class="text-white font-bold text-lg">${formatCurrency(dr.prizePool)} Bs</div>
+                    </div>
+                    <div class="bg-white/5 rounded-xl p-3 text-center">
+                        <div class="text-indigo-400 text-xs mb-1">Bolsa (20%)</div>
+                        <div class="text-white font-bold text-lg">${formatCurrency(dr.accumulated)} Bs</div>
+                    </div>
+                </div>
+
+                ${dr.winners.length > 0 ? `
+                    <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3 mb-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-yellow-400">🏆</span>
+                            <span class="text-yellow-400 font-bold text-sm">Ganador${dr.winners.length > 1 ? 'es' : ''} de la Fecha — Pago por jugador</span>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            ${dr.winners.map(w => `
+                                <span class="bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-full text-sm font-semibold">
+                                    ${w.name} — ${w.totalPoints} pts — ${formatCurrency(dr.prizePerWinner)} Bs
+                                </span>
+                            `).join('')}
+                        </div>
+                        <div class="text-xs text-gray-400 mt-2">
+                            Total pagado en premios: ${formatCurrency(dr.prizePool)} Bs 
+                            ${dr.winners.length > 1 ? `(dividido entre ${dr.winners.length} ganadores)` : ''}
+                        </div>
+                    </div>
+                ` : '<div class="bg-gray-500/10 border border-gray-500/20 rounded-xl p-3 mb-4 text-center text-gray-400 text-sm">Sin ganadores esta fecha</div>'}
+
+                <div class="mt-4">
+                    <h4 class="text-sm font-semibold text-gray-300 mb-3">Gestión de Pagos — Click para verificar/desverificar</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        ${playersWithStatus.map(p => {
+                            const statusClass = p.isVerified ? 'border-green-500/30 bg-green-500/10' : p.isPending ? 'border-yellow-500/30 bg-yellow-500/10' : 'border-red-500/30 bg-red-500/5';
+                            const statusText = p.isVerified ? '✅ Verificado' : p.isPending ? '⏳ Pendiente' : '❌ Sin pago';
+                            const btnClass = p.isVerified ? 'btn-unverify' : 'btn-verify';
+                            const btnText = p.isVerified ? 'Quitar verificación' : 'Verificar pago';
+                            const statusColor = p.isVerified ? 'text-green-400' : p.isPending ? 'text-yellow-400' : 'text-red-400';
+                            return `
+                                <div class="player-payment-row rounded-lg p-3 border ${statusClass} flex items-center justify-between gap-2">
+                                    <div class="flex items-center gap-2 min-w-0">
+                                        <div class="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-white shrink-0">${getInitials(p.name)}</div>
+                                        <div class="min-w-0">
+                                            <div class="text-sm font-medium text-white truncate">${p.name}</div>
+                                            <div class="text-xs ${statusColor}">${statusText}</div>
+                                        </div>
+                                    </div>
+                                    <button onclick="togglePayment('${p.id}', '${dr.date}', '${p.isVerified ? 'paid' : 'none'}')"
+                                        class="${btnClass} px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0">
+                                        ${btnText}
+                                    </button>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderChampionship(playerStats, dateResults) {
+    const sortedDates = dateResults.map(d => d.date).sort();
+
+    return `
+        <div class="glass rounded-2xl p-6 mb-6">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                <div>
+                    <h2 class="text-xl font-bold flex items-center gap-2">
+                        <span class="text-2xl">📊</span> Campeonato — Centro de Control Económico
+                    </h2>
+                    <p class="text-xs text-gray-400 mt-1">Solo se consideran fechas con pagos verificados o fechas libres</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="text-sm text-gray-400">Fecha para "Puntos Fecha":</label>
+                    <select id="dateSelector" onchange="changeSelectedDate(this.value)" class="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-yellow-500">
+                        ${sortedDates.map(d => `<option value="${d}" ${d === selectedDateForPoints ? 'selected' : ''}>${formatDateNice(d)}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-gray-400 text-xs uppercase tracking-wider border-b border-white/10">
+                            <th class="text-left py-3 px-3">#</th>
+                            <th class="text-left py-3 px-3">Jugador</th>
+                            <th class="text-center py-3 px-3">Pagos Verif.</th>
+                            <th class="text-center py-3 px-3">Puntos Fecha</th>
+                            <th class="text-center py-3 px-3">Puntos Acum.</th>
+                            <th class="text-center py-3 px-3">Exactos</th>
+                            <th class="text-center py-3 px-3">Dinero Pagado</th>
+                            <th class="text-center py-3 px-3">Premios Ganados</th>
+                            <th class="text-center py-3 px-3">Balance</th>
+                            <th class="text-center py-3 px-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${playerStats.map((p, i) => {
+                            const isTop = p.rank === 1 && p.totalValidPoints > 0;
+                            const hasActivity = p.verifiedPaymentsCount > 0 || p.totalPrizeMoney > 0;
+                            const balanceClass = p.balance >= 0 ? 'money-positive' : 'money-negative';
+                            const balanceIcon = p.balance >= 0 ? '+' : '';
+                            return `
+                                <tr class="player-row border-b border-white/5 ${isTop ? 'winner-row' : ''} ${!hasActivity ? 'opacity-50' : ''}" onclick="toggleDetails('${p.id}')">
+                                    <td class="py-3 px-3 font-bold ${isTop ? 'text-yellow-400' : 'text-gray-500'}">${p.rank}</td>
+                                    <td class="py-3 px-3">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-8 h-8 rounded-full ${isTop ? 'bg-gradient-to-br from-yellow-500 to-amber-600' : 'bg-gray-700'} flex items-center justify-center text-xs font-bold text-white">${getInitials(p.name)}</div>
+                                            <span class="font-semibold ${isTop ? 'text-yellow-400' : ''}">${p.name}</span>
+                                            ${isTop ? '<span class="text-yellow-400">🏆</span>' : ''}
+                                        </div>
+                                    </td>
+                                    <td class="py-3 px-3 text-center">
+                                        <span class="${p.verifiedPaymentsCount > 0 ? 'text-green-400' : 'text-gray-600'} font-semibold">${p.verifiedPaymentsCount}</span>
+                                        <span class="text-gray-600 text-xs">/${p.totalPaymentsCount}</span>
+                                    </td>
+                                    <td class="py-3 px-3 text-center">
+                                        <span class="px-3 py-1 rounded-lg font-bold ${p.selectedDatePoints > 0 ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-gray-500'}">${p.selectedDatePoints}</span>
+                                    </td>
+                                    <td class="py-3 px-3 text-center">
+                                        <span class="px-3 py-1 rounded-lg font-bold ${isTop ? 'bg-yellow-500 text-black' : 'bg-white/10 text-white'}">${p.totalValidPoints}</span>
+                                    </td>
+                                    <td class="py-3 px-3 text-center text-yellow-400 font-bold">${p.exactos}</td>
+                                    <td class="py-3 px-3 text-center">
+                                        <span class="text-red-400 font-bold">${formatCurrency(p.moneyPaid)} Bs</span>
+                                    </td>
+                                    <td class="py-3 px-3 text-center">
+                                        <span class="text-green-400 font-bold">${formatCurrency(p.totalPrizeMoney)} Bs</span>
+                                    </td>
+                                    <td class="py-3 px-3 text-center">
+                                        <span class="font-bold ${balanceClass}">${balanceIcon}${formatCurrency(p.balance)} Bs</span>
+                                    </td>
+                                    <td class="py-3 px-3 text-center">
+                                        <span class="expand-btn text-gray-500 text-lg" id="expand-${p.id}">▶</span>
+                                    </td>
+                                </tr>
+                                <tr id="details-${p.id}" class="detail-row bg-black/20">
+                                    <td colspan="11" class="py-4 px-6">
+                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                            ${Object.keys(p.prizesByDate).length > 0 || Object.keys(p.paidByDate).length > 0 
+                                                ? Object.keys(p.prizesByDate).map(date => {
+                                                    const prize = p.prizesByDate[date] || 0;
+                                                    const paid = p.paidByDate[date] || 0;
+                                                    const points = p.pointsByDate[date] || 0;
+                                                    if (prize === 0 && paid === 0) return '';
+                                                    return `
+                                                        <div class="bg-white/5 rounded-lg p-2 ${prize > 0 ? 'border border-yellow-500/30' : ''}">
+                                                            <div class="text-gray-400 font-semibold">${formatDateNice(date)}</div>
+                                                            <div class="text-white">${points} pts</div>
+                                                            ${paid > 0 ? `<div class="text-red-400">-${formatCurrency(paid)} Bs</div>` : ''}
+                                                            ${prize > 0 ? `<div class="text-green-400 font-bold">+${formatCurrency(prize)} Bs 🏆</div>` : ''}
+                                                        </div>
+                                                    `;
+                                                }).join('')
+                                                : '<div class="text-gray-500 col-span-4 text-center">Sin actividad registrada</div>'
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function renderDistribution(totalIncome, totalDistributed, totalAccumulated) {
+    const total = totalIncome + totalDistributed + totalAccumulated;
+    const incomePct = total > 0 ? Math.round((totalIncome / total) * 100) : 0;
+    const prizePct = total > 0 ? Math.round((totalDistributed / total) * 100) : 0;
+    const accPct = total > 0 ? Math.round((totalAccumulated / total) * 100) : 0;
+
+    return `
+        <div class="glass rounded-2xl p-6 fade-in">
+            <h2 class="text-xl font-bold mb-6 flex items-center gap-2">
+                <span class="text-2xl">📊</span> Distribución del Dinero
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="text-center">
+                    <div class="relative w-32 h-32 mx-auto mb-4">
+                        <svg viewBox="0 0 36 36" class="w-full h-full transform -rotate-90">
+                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1e293b" stroke-width="3" />
+                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#22c55e" stroke-width="3" stroke-dasharray="${incomePct}, 100" />
+                        </svg>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <span class="text-lg font-bold text-green-400">${incomePct}%</span>
+                        </div>
+                    </div>
+                    <div class="text-green-400 font-bold">Ingresos</div>
+                    <div class="text-gray-500 text-xs">${formatCurrency(totalIncome)} Bs</div>
+                </div>
+                <div class="text-center">
+                    <div class="relative w-32 h-32 mx-auto mb-4">
+                        <svg viewBox="0 0 36 36" class="w-full h-full transform -rotate-90">
+                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1e293b" stroke-width="3" />
+                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#fbbf24" stroke-width="3" stroke-dasharray="${prizePct}, 100" />
+                        </svg>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <span class="text-lg font-bold text-yellow-400">${prizePct}%</span>
+                        </div>
+                    </div>
+                    <div class="text-yellow-400 font-bold">Premios</div>
+                    <div class="text-gray-500 text-xs">${formatCurrency(totalDistributed)} Bs</div>
+                </div>
+                <div class="text-center">
+                    <div class="relative w-32 h-32 mx-auto mb-4">
+                        <svg viewBox="0 0 36 36" class="w-full h-full transform -rotate-90">
+                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1e293b" stroke-width="3" />
+                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#818cf8" stroke-width="3" stroke-dasharray="${accPct}, 100" />
+                        </svg>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <span class="text-lg font-bold text-indigo-400">${accPct}%</span>
+                        </div>
+                    </div>
+                    <div class="text-indigo-400 font-bold">Acumulado</div>
+                    <div class="text-gray-500 text-xs">${formatCurrency(totalAccumulated)} Bs</div>
+                </div>
+            </div>
+            <div class="mt-8 p-4 bg-white/5 rounded-xl">
+                <h3 class="text-sm font-semibold text-gray-300 mb-3">Resumen de Reglas Financieras</h3>
+                <ul class="text-sm text-gray-400 space-y-2">
+                    <li>• <span class="text-green-400">Recaudación</span> = jugadores habilitados × costo de inscripción de la fecha</li>
+                    <li>• <span class="text-yellow-400">Premios (80%)</span> = se reparten entre los ganadores de cada fecha</li>
+                    <li>• <span class="text-indigo-400">Bolsa Acumulada (20%)</span> = se acumula para el premio final</li>
+                    <li>• Si hay varios ganadores, el 80% se divide en partes iguales</li>
+                    <li>• La bolsa acumulada nunca se divide; solo se entrega al finalizar el campeonato</li>
+                    <li>• Solo se consideran puntos de fechas con pagos verificados</li>
+                    <li>• El balance de cada jugador = Premios Ganados - Dinero Pagado</li>
+                </ul>
+            </div>
+        </div>
+    `;
+}
+
+function switchTab(tabName) {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('tab-active');
+        btn.style.color = '#94a3b8';
+        btn.style.borderBottomColor = 'transparent';
+    });
+    document.querySelectorAll('[id^="panel-"]').forEach(panel => panel.classList.add('hidden'));
+    document.getElementById('tab-' + tabName).classList.add('tab-active');
+    document.getElementById('panel-' + tabName).classList.remove('hidden');
+}
+
+function changeSelectedDate(dateValue) {
+    selectedDateForPoints = dateValue;
+    renderAll();
+}
+
+function toggleDetails(playerId) {
+    const row = document.getElementById('details-' + playerId);
+    const btn = document.getElementById('expand-' + playerId);
+    if (row.classList.contains('visible')) {
+        row.classList.remove('visible');
+        btn.classList.remove('rotated');
+    } else {
+        row.classList.add('visible');
+        btn.classList.add('rotated');
+    }
+}
+
+function showToast(msg, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 fade-in ${type === 'error' ? 'bg-red-600' : type === 'success' ? 'bg-green-600' : 'bg-blue-600'}`;
+    toast.innerHTML = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(20px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+document.addEventListener('DOMContentLoaded', loadData);
+
+window.addEventListener('beforeunload', () => {
+    if (realtimeChannel) sb.removeChannel(realtimeChannel);
+});
+</script>
+
+<header class="glass sticky top-0 z-40 border-b border-white/10">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="text-3xl">💰</div>
+            <div>
+                <h1 class="text-xl font-black gradient-text">CENTRO DE CONTROL ECONÓMICO</h1>
+                <p class="text-xs text-gray-400">Quiniela Mundial 2026 — Finanzas y Premios</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 mr-2">
+                <div id="liveIndicator" class="live-indicator" title="Conectando..."></div>
+                <span class="text-xs text-gray-500">Tiempo real</span>
+            </div>
+            <button onclick="window.location.href='index.html'" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm transition">← Quiniela</button>
+            <button onclick="window.open('ganador-fecha.html','_blank')" class="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm transition">🏆 Ganadores</button>
+            <button onclick="window.open('evaluaciones.html','_blank')" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm transition">📊 Evaluaciones</button>
+        </div>
+    </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-4 mt-6 pb-20" id="mainContainer">
+    <div class="glass rounded-2xl p-12 text-center">
+        <div class="loading-spinner"></div>
+        <p class="text-gray-400 mt-4">Cargando centro de control económico...</p>
+    </div>
+</main>
+
+</body>
+</html>
