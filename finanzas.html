@@ -59,8 +59,8 @@
 // ============================================
 // CONFIGURACIÓN SUPABASE
 // ============================================
-const SUPABASE_URL = 'https://dwcnwxrcwuicwxbtqpxs.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_M93hXy25JXgP76Plysgr9w_nvwBZ-cT';
+const SUPABASE_URL = 'https://XXX.supabase.co';
+const SUPABASE_KEY = 'XXX';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let players = [];
@@ -99,6 +99,26 @@ function extractDateKey(dateStr) {
     }
 }
 
+// Extrae YYYY-MM-DD convertido a zona horaria Bolivia
+// Para timestamps ISO (matches): convierte a Bolivia antes de extraer fecha
+// Para fechas YYYY-MM-DD sin hora (payment_fees, payments): asume que ya es fecha Bolivia
+function extractDateKeyBolivia(dateStr) {
+    if (!dateStr) return '';
+    // Si es solo fecha YYYY-MM-DD sin componente de hora (usado en payment_fees, payments)
+    if (typeof dateStr === 'string' && dateStr.length === 10 && dateStr.includes('-') && !dateStr.includes('T') && !dateStr.includes(' ')) {
+        return dateStr;
+    }
+    // Para timestamps con hora (usado en matches.match_date), convertir a Bolivia
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    const boliviaStr = d.toLocaleString('en-US', { timeZone: 'America/La_Paz' });
+    const bd = new Date(boliviaStr);
+    const year = bd.getFullYear();
+    const month = String(bd.getMonth() + 1).padStart(2, '0');
+    const day = String(bd.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 // Convierte a fecha en zona horaria de Bolivia
 function toBoliviaDate(dateStr) {
     if (!dateStr) return null;
@@ -122,11 +142,11 @@ function getBoliviaDateKey(dateStr) {
 }
 
 function getFeeForDate(dateStr) {
-    const dateKey = extractDateKey(dateStr);
+    const dateKey = extractDateKeyBolivia(dateStr);
     if (!dateKey) return { amount: 5.00, isFree: false, notes: 'Valor por defecto' };
 
     const fee = paymentFees.find(f => {
-        const feeDate = extractDateKey(f.match_date);
+        const feeDate = extractDateKeyBolivia(f.match_date);
         return feeDate === dateKey;
     });
 
@@ -136,14 +156,14 @@ function getFeeForDate(dateStr) {
 }
 
 function hasVerifiedPayment(playerId, matchDateStr) {
-    const dateKey = extractDateKey(matchDateStr);
+    const dateKey = extractDateKeyBolivia(matchDateStr);
     if (!dateKey) return false;
 
     const fee = getFeeForDate(matchDateStr);
     if (fee.isFree) return true;
 
     const payment = payments.find(p => {
-        const payDate = extractDateKey(p.match_date);
+        const payDate = extractDateKeyBolivia(p.match_date);
         return p.player_id === playerId && 
                payDate === dateKey &&
                p.status === 'paid' &&
@@ -167,7 +187,7 @@ const calculatePoints = (betHome, betAway, realHome, realAway) => {
 
 function formatDateNice(dateStr) {
     const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-    const dateKey = extractDateKey(dateStr);
+    const dateKey = extractDateKeyBolivia(dateStr);
     if (!dateKey) return 'Fecha inválida';
 
     const [year, month, day] = dateKey.split('-').map(Number);
@@ -177,7 +197,7 @@ function formatDateNice(dateStr) {
 }
 
 function formatDateShort(dateStr) {
-    const dateKey = extractDateKey(dateStr);
+    const dateKey = extractDateKeyBolivia(dateStr);
     if (!dateKey) return '--/--';
     const [year, month, day] = dateKey.split('-').map(Number);
     return `${String(day).padStart(2,'0')}/${String(month).padStart(2,'0')}`;
@@ -214,7 +234,7 @@ async function loadData() {
         // Seleccionar la fecha más reciente por defecto
         const groupedMatches = {};
         matches.forEach(m => {
-            const dateKey = extractDateKey(m.match_date);
+            const dateKey = extractDateKeyBolivia(m.match_date);
             if (dateKey) {
                 if (!groupedMatches[dateKey]) groupedMatches[dateKey] = [];
                 groupedMatches[dateKey].push(m);
@@ -294,7 +314,7 @@ async function togglePayment(playerId, dateKey, currentStatus) {
             showToast('Verificación removida', 'info');
         } else {
             const existing = payments.find(p => {
-                const payDate = extractDateKey(p.match_date);
+                const payDate = extractDateKeyBolivia(p.match_date);
                 return p.player_id === playerId && payDate === dateKey;
             });
             if (existing) {
@@ -329,7 +349,7 @@ async function togglePayment(playerId, dateKey, currentStatus) {
 function calculateFinancials() {
     const groupedMatches = {};
     matches.forEach(m => {
-        const dateKey = extractDateKey(m.match_date);
+        const dateKey = extractDateKeyBolivia(m.match_date);
         if (dateKey) {
             if (!groupedMatches[dateKey]) groupedMatches[dateKey] = [];
             groupedMatches[dateKey].push(m);
@@ -397,7 +417,7 @@ function calculateFinancials() {
 function calculatePlayerStats() {
     const groupedMatches = {};
     matches.forEach(m => {
-        const dateKey = extractDateKey(m.match_date);
+        const dateKey = extractDateKeyBolivia(m.match_date);
         if (dateKey) {
             if (!groupedMatches[dateKey]) groupedMatches[dateKey] = [];
             groupedMatches[dateKey].push(m);
@@ -433,7 +453,7 @@ function calculatePlayerStats() {
 
             // Cuánto pagó este jugador en esta fecha
             const playerPayment = payments.find(p => {
-                const payDate = extractDateKey(p.match_date);
+                const payDate = extractDateKeyBolivia(p.match_date);
                 return p.player_id === player.id && payDate === date && p.status === 'paid' && p.verified_at;
             });
             const amountPaid = fee.isFree ? 0 : (playerPayment ? (parseFloat(playerPayment.amount) || fee.amount) : 0);
@@ -588,7 +608,7 @@ function renderDateManagement(dateResults) {
     return dateResults.slice().reverse().map(dr => {
         const playersWithStatus = players.map(p => {
             const payment = payments.find(pay => {
-                const payDate = extractDateKey(pay.match_date);
+                const payDate = extractDateKeyBolivia(pay.match_date);
                 return pay.player_id === p.id && payDate === dr.date && pay.status === 'paid';
             });
             const isVerified = payment && payment.verified_at;
