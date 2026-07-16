@@ -66,7 +66,7 @@
 
 <script>
 const SUPABASE_URL = 'https://dwcnwxrcwuicwxbtqpxs.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_M93hXy25JXgP76Plysgr9w_nvwBZ-cT';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3Y253eHJjd3VpY3d4YnRxcHhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxNDk4NDcsImV4cCI6MjA5NzcyNTg0N30.Xwa-18sv9YsodNG1AJeItmf3NdwiHanCE9m9Mka4dSE';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ============================================
@@ -597,12 +597,23 @@ function getPaymentStatus(playerId, matchDateStr) {
         <p class="text-sm text-gray-400 mb-6">Gestioná la quiniela desde acá.</p>
 
         <div class="flex gap-2 mb-4 border-b border-white/10">
-    <button onclick="switchAdminTab('alicuotas')" id="admin-tab-alicuotas" class="admin-tab-btn admin-tab-active">Alícuotas</button>
-    <button onclick="switchAdminTab('pagos')" id="admin-tab-pagos" class="admin-tab-btn text-gray-400">Pagos</button>
-    <button onclick="switchAdminTab('resultados')" id="admin-tab-resultados" class="admin-tab-btn text-gray-400">Resultados</button>
-    <button onclick="switchAdminTab('bonus')" id="admin-tab-bonus" class="admin-tab-btn text-yellow-400">&#127942; Bono Extra</button>
-    <button onclick="window.open('finanzas.html','_blank')" class="admin-tab-btn text-green-400 hover:text-green-300" title="Abrir Centro de Control Económico">💰 Finanzas</button>
-</div>
+                <button onclick="switchAdminTab('alicuotas')" id="admin-tab-alicuotas" class="admin-tab-btn admin-tab-active">Alícuotas</button>
+                <button onclick="switchAdminTab('pagos')" id="admin-tab-pagos" class="admin-tab-btn text-gray-400">Pagos</button>
+                <button onclick="switchAdminTab('resultados')" id="admin-tab-resultados" class="admin-tab-btn text-gray-400">Resultados</button>
+                <button onclick="switchAdminTab('bonus')" id="admin-tab-bonus" class="admin-tab-btn text-yellow-400">&#127942; Bono Extra</button>
+            </div>
+            <div id="admin-panel-alicuotas" class="admin-panel block">
+                <div id="admin-fees-container"></div>
+            </div>
+            <div id="admin-panel-pagos" class="admin-panel hidden">
+                <div id="admin-payments-container"></div>
+            </div>
+            <div id="admin-panel-resultados" class="admin-panel hidden">
+                <div id="admin-matches-container"></div>
+            </div>
+            <div id="admin-panel-bonus" class="admin-panel hidden">
+                <div id="admin-bonus-container"></div>
+            </div>
     </div>
 
     <!-- Panel de tarjetas legacy (mantener compatibilidad) -->
