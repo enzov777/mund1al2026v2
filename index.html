@@ -66,7 +66,7 @@
 
 <script>
 const SUPABASE_URL = 'https://dwcnwxrcwuicwxbtqpxs.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_M93hXy25JXgP76Plysgr9w_nvwBZ-cT';
+const SUPABASE_KEY = 'dwcnwxrcwuicwxbtqpxs';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ============================================
@@ -1289,54 +1289,78 @@ async function saveBonusResults() {
     });
 
     if (results.length === 0) {
-        showToast('Complet&aacute; al menos un resultado', 'warn');
+        showToast('Completá al menos un resultado', 'warn');
         return;
     }
 
-    // Guardar resultados
-    for (const r of results) {
-        const { error } = await sb.from('bonus_results')
-            .upsert(r, { onConflict: 'category' });
-        if (error) {
-            showToast('Error guardando ' + r.category + ': ' + error.message, 'error');
+    // Estrategia DELETE + INSERT en lugar de upsert (evita problemas de RLS con onConflict)
+    const categoriesToUpdate = results.map(r => r.category);
+
+    try {
+        // Borrar resultados existentes para las categorías seleccionadas
+        const { error: deleteError } = await sb
+            .from('bonus_results')
+            .delete()
+            .in('category', categoriesToUpdate);
+
+        if (deleteError) {
+            console.log('Nota al borrar:', deleteError.message);
+        }
+
+        // Insertar los nuevos resultados
+        const { error: insertError } = await sb
+            .from('bonus_results')
+            .insert(results);
+
+        if (insertError) {
+            showToast('Error guardando resultados: ' + insertError.message, 'error');
+            console.error('Insert error:', insertError);
             return;
         }
+
+    } catch (err) {
+        showToast('Error de conexión: ' + err.message, 'error');
+        console.error('saveBonusResults error:', err);
+        return;
     }
 
-    // Llamar función RPC para calcular puntos
+    // Calcular puntos manualmente (RPC puede no existir)
     try {
-        const { error: calcError } = await sb.rpc('calculate_bonus_points');
-        if (calcError) throw calcError;
-    } catch (e) {
-        // Fallback: calcular manualmente si la función RPC no existe
-        console.log('RPC no disponible, calculando manualmente...');
         await calculateBonusPointsManual();
+    } catch (e) {
+        console.log('Error en cálculo manual:', e);
+        showToast('Resultados guardados pero error calculando puntos: ' + e.message, 'error');
+        return;
     }
 
     await loadBonusData();
     renderAdminBonus();
     renderLeaderboard();
-    showToast('Resultados guardados y puntos calculados &#9989;', 'success');
+    showToast('Resultados guardados y puntos calculados ✅', 'success');
 }
 
 async function calculateBonusPointsManual() {
     try {
         // Borrar asignaciones previas
-        await sb.from('bonus_points_awarded').delete().neq('id', 0);
+        const { error: delError } = await sb.from('bonus_points_awarded').delete().neq('id', 0);
+        if (delError) console.log('Nota al borrar puntos previos:', delError.message);
 
-        const pointsMap = { campeon: 50, subcampeon: 40, tercer_lugar: 30, goleador: 30, balon_oro: 25, mas_goles: 20, mejor_arquero: 20, juego_limpio: 15 };
+        const pointsMap = { 
+            campeon: 50, subcampeon: 40, tercer_lugar: 30, 
+            goleador: 30, balon_oro: 25, mas_goles: 20, 
+            mejor_arquero: 20, juego_limpio: 15 
+        };
+
+        const pointsToInsert = [];
 
         for (const pred of bonusPredictions) {
-            let totalExtra = 0;
-
             for (const cat of BONUS_CATEGORIES) {
                 const result = bonusResults.find(r => r.category === cat.key);
                 if (!result || !result.winner) continue;
 
                 const prediction = pred[cat.key];
                 if (prediction && prediction.trim().toLowerCase() === result.winner.trim().toLowerCase()) {
-                    totalExtra += pointsMap[cat.key];
-                    await sb.from('bonus_points_awarded').insert({
+                    pointsToInsert.push({
                         player_id: pred.player_id,
                         category: cat.key,
                         prediction: prediction,
@@ -1345,18 +1369,17 @@ async function calculateBonusPointsManual() {
                     });
                 }
             }
+        }
 
-            // Actualizar total_points del jugador - obtener valor actual primero
-            if (totalExtra > 0) {
-                const player = players.find(p => p.id === pred.player_id);
-                const currentPoints = player ? (player.total_points || 0) : 0;
-                const newTotal = currentPoints + totalExtra;
-
-                await sb.from('players')
-                    .update({ total_points: newTotal })
-                    .eq('id', pred.player_id);
+        // Insertar todos los puntos de una vez
+        if (pointsToInsert.length > 0) {
+            const { error: insertError } = await sb.from('bonus_points_awarded').insert(pointsToInsert);
+            if (insertError) {
+                console.error('Error insertando puntos:', insertError);
+                throw insertError;
             }
         }
+
     } catch (error) {
         console.error('Error en calculateBonusPointsManual:', error);
         showToast('Error calculando puntos bonus: ' + error.message, 'error');
