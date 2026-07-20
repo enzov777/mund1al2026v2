@@ -456,7 +456,7 @@ function calculatePlayerStats() {
                 const payDate = extractDateKeyBolivia(p.match_date);
                 return p.player_id === player.id && payDate === date && p.status === 'paid' && p.verified_at;
             });
-            const amountPaid = fee.isFree ? 0 : (playerPayment ? (parseFloat(playerPayment.amount) || fee.amount) : 0);
+            const amountPaid = fee.isFree ? 0 : (playerPayment ? fee.amount : 0);
             paidByDate[date] = amountPaid;
 
             if (!hasPayment && !fee.isFree) {
@@ -509,7 +509,7 @@ function calculatePlayerStats() {
         const selectedDatePoints = selectedDateForPoints ? (pointsByDate[selectedDateForPoints] || 0) : 0;
 
         // Dinero pagado total
-            // 1. Sumar paidByDate (fechas con partidos finalizados, ya usa getFeeForDate)
+            // 1. Sumar paidByDate (fechas con partidos finalizados, ya usa fee.amount)
             let moneyPaid = 0;
             Object.values(paidByDate).forEach(amount => {
                 moneyPaid += amount;
@@ -522,7 +522,7 @@ function calculatePlayerStats() {
                     // Solo sumar si esta fecha NO está ya en paidByDate
                     if (payDateKey && !paidByDate.hasOwnProperty(payDateKey)) {
                         const fee = getFeeForDate(payDateKey);
-                        moneyPaid += fee.isFree ? 0 : (parseFloat(pay.amount) || fee.amount);
+                        moneyPaid += fee.isFree ? 0 : fee.amount;
                     }
                 }
             });
