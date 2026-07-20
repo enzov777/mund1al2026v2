@@ -509,7 +509,7 @@ function calculatePlayerStats() {
         const selectedDatePoints = selectedDateForPoints ? (pointsByDate[selectedDateForPoints] || 0) : 0;
 
         // Dinero pagado total
-            // 1. Sumar paidByDate (fechas con partidos finalizados, ya usa fee.amount)
+            // 1. Sumar paidByDate (fechas con partidos finalizados, ya usa fee.amount correctamente)
             let moneyPaid = 0;
             Object.values(paidByDate).forEach(amount => {
                 moneyPaid += amount;
@@ -519,7 +519,6 @@ function calculatePlayerStats() {
             payments.forEach(pay => {
                 if (pay.player_id === player.id && pay.status === 'paid' && pay.verified_at) {
                     const payDateKey = extractDateKeyBolivia(pay.match_date);
-                    // Solo sumar si esta fecha NO está ya en paidByDate
                     if (payDateKey && !paidByDate.hasOwnProperty(payDateKey)) {
                         const fee = getFeeForDate(payDateKey);
                         moneyPaid += fee.isFree ? 0 : fee.amount;
