@@ -508,13 +508,11 @@ function calculatePlayerStats() {
 
         const selectedDatePoints = selectedDateForPoints ? (pointsByDate[selectedDateForPoints] || 0) : 0;
 
-        // Dinero pagado total
-        let moneyPaid = 0;
-        payments.forEach(pay => {
-            if (pay.player_id === player.id && pay.status === 'paid' && pay.verified_at) {
-                moneyPaid += parseFloat(pay.amount) || 0;
-            }
-        });
+        // Dinero pagado total (sumar paidByDate que ya usa getFeeForDate correctamente)
+            let moneyPaid = 0;
+            Object.values(paidByDate).forEach(amount => {
+                moneyPaid += amount;
+            });
 
         return {
             ...player,
